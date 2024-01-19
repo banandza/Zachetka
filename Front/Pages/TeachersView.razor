@@ -1,0 +1,197 @@
+﻿@page "/teachers"
+
+<PageTitle>Учителя</PageTitle>
+
+@inject HttpClient HttpClient
+
+<h1>Учителя</h1>
+
+<p>Здесь находится список учителей</p>
+
+<MudTooltip Text="Добавить учителя">
+    <MudFab Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="ToggleCreateTeacherMenu" />
+</MudTooltip>
+
+@if (isCreatingTeacher)
+{
+    <div>
+        <MudTextField @bind-Value="newTeacher.Surname" Label="Фамилия" />
+        <MudTextField @bind-Value="newTeacher.Name" Label="Имя" />
+        <MudTextField @bind-Value="newTeacher.Position" Label="Должность" />
+        <MudTextField @bind-Value="newTeacher.Phone_Number" Label="Телефон" />
+        <MudTextField @bind-Value="newTeacher.Email_Address" Label="Почта" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateTeacher">Создать учителя</MudButton>
+    </div>
+}
+
+@if (teachers == null)
+{
+    <p><em>Loading teachers...</em></p>
+}
+else
+{
+    <MudTable Items="@teachers" Hover="true" ReadOnly="true">
+        <HeaderContent>
+            <MudTh>Фамилия</MudTh>
+            <MudTh>Имя</MudTh>
+            <MudTh>Должность</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @if (isEditing && context.Id == editingTeacher.Id)
+                {
+                    <MudTextField @bind-Value="editingTeacher.Surname" />
+                }
+                else
+                {
+                    <a href="/teachers/@context.Id">@context.Surname</a>
+                }
+            </MudTd>            
+            <MudTd>
+                @if (isEditing && context.Id == editingTeacher.Id)
+                {
+                    <MudTextField @bind-Value="editingTeacher.Name" />
+                }
+                else
+                {
+                    @context.Name
+                }
+            </MudTd>
+            <MudTd>
+                @if (isEditing && context.Id == editingTeacher.Id)
+                {
+                    <MudTextField @bind-Value="editingTeacher.Position" />
+                }
+                else
+                {
+                    @context.Position
+                }
+            </MudTd>            
+            <MudTd>
+                <MudMenu FullWidth="true" ActivationEvent="@MouseEvent.MouseOver" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                    <ActivatorContent>
+                        <MudChip Icon="@Icons.Material.Filled.MoreVert"></MudChip>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @if (isEditing && context.Id == editingTeacher.Id)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveChanges">
+                                <MudIcon Icon="@Icons.Material.Filled.Save" Size="Size.Small" />
+                            </MudButton>
+
+                            <MudButton Variant="Variant.Outlined" OnClick="CancelEditing">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Delete" @onclick="() => DeleteTeacher(context.Id)">Удалить</MudMenuItem>
+                            <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Edit" @onclick="() => StartEditing(context)">Редактировать</MudMenuItem>
+                        }
+                        </ChildContent>
+                    </MudMenu>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+}
+
+@code {
+    private List<(int Id, string Surname, string Name, string Position, string Phone_Number, string Email_Address)> teachers;
+
+    private TeacherDto newTeacher = new TeacherDto();
+
+    private (int Id, string Surname, string Name, string Position, string Phone_Number, string Email_Address) editingTeacher;
+    
+    private bool isEditing = false;
+
+    private bool isCreatingTeacher = false;
+    
+    private bool shouldUpdate = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpResponseMessage response = await HttpClient.GetAsync("https://localhost:7046/api/Teacher");
+        if (response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadFromJsonAsync<List<TeacherDto>>();
+
+            teachers = responseBody.Select(rb => (rb.Id, rb.Surname, rb.Name, rb.Position, rb.Phone_Number, rb.Email_Address)).ToList();
+            
+            if (teachers != null)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task DeleteTeacher(int teacherId)
+    {
+        HttpResponseMessage response = await HttpClient.DeleteAsync($"https://localhost:7046/api/Teacher/{teacherId}");
+
+        shouldUpdate = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            return;
+        }
+
+        if (shouldUpdate)
+        {
+            shouldUpdate = false;
+            await OnInitializedAsync();
+        }
+    }
+
+    private async Task CreateTeacher()
+    {
+        HttpResponseMessage response = await HttpClient.PostAsJsonAsync("https://localhost:7046/api/Teacher", newTeacher);
+
+        if (response.IsSuccessStatusCode)
+        {
+            newTeacher = new TeacherDto();
+
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error creating teacher. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void StartEditing((int Id, string Surname, string Name, string Position, string Phone_Number, string Email_Address) teacher)
+    {
+        isEditing = true;
+        editingTeacher = teacher;
+    }
+
+    private void CancelEditing()
+    {
+        isEditing = false;
+        editingTeacher = default;
+    }
+
+    private async Task SaveChanges()
+    {
+        var tea = new TeacherDto { Id = editingTeacher.Id, Surname = editingTeacher.Surname, Name = editingTeacher.Name, Position = editingTeacher.Position, Phone_Number = editingTeacher.Phone_Number, Email_Address = editingTeacher.Email_Address};
+        
+        HttpResponseMessage response = await HttpClient.PutAsJsonAsync($"https://localhost:7046/api/Teacher/{tea.Id}", tea);
+        if (response.IsSuccessStatusCode)
+        {
+            isEditing = false;
+            editingTeacher = default;
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error saving changes. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void ToggleCreateTeacherMenu()
+    {
+        isCreatingTeacher = !isCreatingTeacher;
+    }
+}

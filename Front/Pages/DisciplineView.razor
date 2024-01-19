@@ -1,0 +1,230 @@
+﻿@page "/disciplines/{disciplineId:int}"
+
+<PageTitle>Дисциплина @discipline.Title</PageTitle>
+
+@inject HttpClient HttpClient
+
+<h1>@discipline.Title</h1>
+
+<p>Количество часов: @discipline.Hours</p>
+
+<MudTooltip Text="Добавить оценку">
+    <MudFab Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="ToggleCreateGradeMenu" />
+</MudTooltip>
+
+@if (isCreatingGrade)
+{
+    <div>
+        <MudTextField @bind-Value="newStatementSurname" Label="Фамилия" />
+        <MudTextField @bind-Value="newStatement.Grade" Label="Оценка" />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateGrade">Создать оценку</MudButton>
+    </div>
+}
+
+@if (grades == null)
+{
+    <p><em>Loading grades...</em></p>
+}
+else
+{
+    <MudTable Items="@grades" Hover="true" ReadOnly="true">
+        <HeaderContent>
+            <MudTh>Фамилия</MudTh>
+            <MudTh>Имя</MudTh>
+            <MudTh>Оценка</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @if (context.StudentId != 0)
+                {
+                    var student = students.FirstOrDefault(s => s.Id == context.StudentId);
+                    @student.Surname
+                }
+                else
+                {
+                    <p>Loading...</p>
+                }
+            </MudTd>
+            <MudTd>
+                @if (context.StudentId != 0)
+                {
+                    var student = students.FirstOrDefault(s => s.Id == context.StudentId);
+                    @student.Name
+                }
+                else
+                {
+                    <p>Loading...</p>
+                }
+            </MudTd>
+            <MudTd>
+                @if (isEditing && context.Id == editingGrade.Id)
+                {
+                    <MudTextField @bind-Value="editingGrade.Grade" />
+                }
+                else
+                {
+                    @context.Grade
+                }
+            </MudTd>
+            <MudMenu FullWidth="true" ActivationEvent="@MouseEvent.MouseOver" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                <ActivatorContent>
+                    <MudChip Icon="@Icons.Material.Filled.MoreVert"></MudChip>
+                </ActivatorContent>
+                <ChildContent>
+                    @if (isEditing && context.Id == editingGrade.Id)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveChanges">
+                            <MudIcon Icon="@Icons.Material.Filled.Save" Size="Size.Small" />
+                        </MudButton>
+
+                        <MudButton Variant="Variant.Outlined" OnClick="CancelEditing">
+                            <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Delete" @onclick="() => DeleteGrade(context.Id)">Удалить</MudMenuItem>
+                        <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Edit" @onclick="() => StartEditing(context)">Редактировать</MudMenuItem>
+                    }
+                </ChildContent>
+            </MudMenu>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter]
+    public int disciplineId { get; set; }
+
+    private (int Id, string Title, int Hours) discipline;
+
+    private (int Id, int Grade, int StudentId, int DisciplineId) editingGrade;
+
+    private List<(int Id, int Grade, int StudentId, int DisciplineId)> grades;
+
+    private List<(int Id, string Surname, string Name, string Group_Number, int Course, int Semester)> students;
+
+    private bool shouldUpdate = false;
+
+    private bool isEditing = false;
+
+    private bool isCreatingGrade = false;
+
+    private string newStatementSurname;
+
+    private (int Id, string Surname, string Name, string Group_Number, int Course, int Semester) newStudent;
+
+    private StatementDto newStatement = new StatementDto();
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpResponseMessage responseDiscipline = await HttpClient.GetAsync($"https://localhost:7046/api/Discipline/{disciplineId}");
+        if (responseDiscipline.IsSuccessStatusCode)
+        {
+            var responseBodyDiscipline = await responseDiscipline.Content.ReadFromJsonAsync<DisciplineDto>();
+            discipline = (responseBodyDiscipline.Id, responseBodyDiscipline.Title, responseBodyDiscipline.Hours);
+        }
+
+        HttpResponseMessage responseGrades = await HttpClient.GetAsync($"https://localhost:7046/api/Discipline/{disciplineId}/grades");
+        if (responseGrades.IsSuccessStatusCode)
+        {
+            var responseBodyGrades = await responseGrades.Content.ReadFromJsonAsync<List<StatementDto>>();
+            grades = responseBodyGrades.Select(rbg => (rbg.Id, rbg.Grade, rbg.StudentId, rbg.DisciplineId)).ToList();
+            
+            if (grades != null)
+            {
+                StateHasChanged();
+            }
+        }
+
+        HttpResponseMessage responseStudent = await HttpClient.GetAsync($"https://localhost:7046/api/Student");
+        if (responseStudent.IsSuccessStatusCode)
+        {
+            var responseBodyStudent = await responseStudent.Content.ReadFromJsonAsync<List<StudentDto>>();
+            students = responseBodyStudent.Select(rbs => (rbs.Id, rbs.Surname, rbs.Name, rbs.Group_Number, rbs.Course, rbs.Semester)).ToList();
+        }
+    }
+
+    private async Task StudentGrade()
+    {
+        HttpResponseMessage responseNewStudent = await HttpClient.GetAsync($"https://localhost:7046/api/Student/surname/{newStatementSurname}");
+        if (responseNewStudent.IsSuccessStatusCode)
+        {
+            var responseBodyStudent = await responseNewStudent.Content.ReadFromJsonAsync<StudentDto>();
+
+            newStudent = (responseBodyStudent.Id, responseBodyStudent.Surname, responseBodyStudent.Name, responseBodyStudent.Group_Number, responseBodyStudent.Course, responseBodyStudent.Semester);
+        }
+    }
+
+    private async Task DeleteGrade(int gradeId)
+    {
+        HttpResponseMessage response = await HttpClient.DeleteAsync($"https://localhost:7046/api/Statement/{gradeId}");
+        shouldUpdate = true;
+    }
+
+    private async Task CreateGrade()
+    {
+        await StudentGrade();
+        newStatement.StudentId = newStudent.Id;
+        newStatement.DisciplineId = discipline.Id;
+
+        HttpResponseMessage response = await HttpClient.PostAsJsonAsync("https://localhost:7046/api/Statement", newStatement);
+
+        if (response.IsSuccessStatusCode)
+        {
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error creating statement. Status code: {response.StatusCode}");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            return;
+        }
+
+        if (shouldUpdate)
+        {
+            shouldUpdate = false;
+            await OnInitializedAsync();
+        }
+    }
+
+    private void StartEditing((int Id, int Grade, int StudentId, int DisciplineId) grade)
+    {
+        isEditing = true;
+        editingGrade = grade;
+    }
+
+    private void CancelEditing()
+    {
+        isEditing = false;
+        editingGrade = default;
+    }
+
+    private async Task SaveChanges()
+    {
+        var sta = new StatementDto { Id = editingGrade.Id, Grade = editingGrade.Grade, StudentId = editingGrade.StudentId, DisciplineId = editingGrade.DisciplineId };
+        HttpResponseMessage response = await HttpClient.PutAsJsonAsync($"https://localhost:7046/api/Statement/{sta.Id}", sta);
+        if (response.IsSuccessStatusCode)
+        {
+            isEditing = false;
+            editingGrade = default;
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error saving changes. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void ToggleCreateGradeMenu()
+    {
+        isCreatingGrade = !isCreatingGrade;
+    }
+}

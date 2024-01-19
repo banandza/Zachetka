@@ -1,0 +1,209 @@
+﻿@page "/students"
+
+<PageTitle>Студенты</PageTitle>
+
+@inject HttpClient HttpClient
+
+<h1>Студенты</h1>
+
+<p>Здесь находится список студентов</p>
+
+<MudTooltip Text="Добавить студента">
+    <MudFab Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="ToggleCreateStudentMenu" />
+</MudTooltip>
+
+@if (isCreatingStudent)
+{
+    <div>
+        <MudTextField @bind-Value="newStudent.Surname" Label="Фамилия" />
+        <MudTextField @bind-Value="newStudent.Name" Label="Имя" />
+        <MudTextField @bind-Value="newStudent.Group_Number" Label="Группа" />
+        <MudTextField @bind-Value="newStudent.Course" Label="Курс" />
+        <MudTextField @bind-Value="newStudent.Semester" Label="Семестр" />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateStudent">Создать студента</MudButton>
+    </div>
+}
+
+@if (students == null)
+{
+    <p><em>Loading students...</em></p>
+}
+else
+{
+    <MudTable Items="@students" Hover="true" ReadOnly="true">
+        <HeaderContent>
+            <MudTh>Фамилия</MudTh>
+            <MudTh>Имя</MudTh>
+            <MudTh>Группа</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @if (isEditing && context.Id == editingStudent.Id)
+                {
+                    <MudTextField @bind-Value="editingStudent.Surname" />
+                }
+                else
+                {
+                    <a href="/students/@context.Id">@context.Surname</a>
+                }
+            </MudTd>            
+            <MudTd>
+                @if (isEditing && context.Id == editingStudent.Id)
+                {
+                    <MudTextField @bind-Value="editingStudent.Name" />
+                }
+                else
+                {
+                    @context.Name
+                }
+            </MudTd>
+            <MudTd>
+                @if (isEditing && context.Id == editingStudent.Id)
+                {
+                    <MudTextField @bind-Value="editingStudent.Group_Number" />
+                }
+                else
+                {
+                    @context.Group_Number
+                }
+            </MudTd>            
+            <MudTd>
+                <MudMenu FullWidth="true" ActivationEvent="@MouseEvent.MouseOver" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                    <ActivatorContent>
+                        <MudChip Icon="@Icons.Material.Filled.MoreVert"></MudChip>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @if (isEditing && context.Id == editingStudent.Id)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveChanges">
+                                <MudIcon Icon="@Icons.Material.Filled.Save" Size="Size.Small" />
+                            </MudButton>
+
+                            <MudButton Variant="Variant.Outlined" OnClick="CancelEditing">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Delete" @onclick="() => DeleteStudent(context.Id)">Удалить</MudMenuItem>
+                            <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Edit" @onclick="() => StartEditing(context)">Редактировать</MudMenuItem>
+                        }
+                    </ChildContent>
+                </MudMenu>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+
+}
+
+@code {
+    private List<(int Id, string Surname, string Name, string Group_Number, int Course, int Semester)> students;
+
+    private (int Id, string Surname, string Name, string Group_Number, int Course, int Semester) editingStudent;
+    
+    private StudentDto newStudent = new StudentDto();
+
+    private bool isEditing = false;
+
+    private bool isCreatingStudent = false;
+
+    private bool shouldUpdate = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        HttpResponseMessage response = await HttpClient.GetAsync($"https://localhost:7046/api/Student");
+        if (response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadFromJsonAsync<List<StudentDto>>();
+
+            students = responseBody.Select(rb => (rb.Id, rb.Surname, rb.Name, rb.Group_Number, rb.Course, rb.Semester)).ToList();
+
+            if (students != null)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task DeleteStudent(int studentId)
+    {
+        HttpResponseMessage response = await HttpClient.DeleteAsync($"https://localhost:7046/api/Student/{studentId}");
+        shouldUpdate = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            return;
+        }
+
+        if (shouldUpdate)
+        {
+            shouldUpdate = false;
+            await OnInitializedAsync();
+        }
+    }
+
+    private async Task CreateStudent()
+    {
+        if (newStudent.Course < 1 || newStudent.Course > 5)
+        {
+            Console.WriteLine("Ошибка: Курс должен быть от 1 до 5");
+            return;
+        }
+
+        if (newStudent.Semester < 1 || newStudent.Semester > 10)
+        {
+            Console.WriteLine("Ошибка: Семестр должен быть от 1 до 10");
+            return;
+        }
+        HttpResponseMessage response = await HttpClient.PostAsJsonAsync("https://localhost:7046/api/Student", newStudent);
+
+        if (response.IsSuccessStatusCode)
+        {
+            newStudent = new StudentDto();
+
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error creating student. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void StartEditing((int Id, string Surname, string Name, string Group_Number, int Course, int Semester) student)
+    {
+        isEditing = true;
+        editingStudent = student;
+    }
+
+    private void CancelEditing()
+    {
+        isEditing = false;
+        editingStudent = default;
+    }
+
+    private async Task SaveChanges()
+    {
+        var stu = new StudentDto { Id = editingStudent.Id, Surname = editingStudent.Surname, Name = editingStudent.Name, Group_Number = editingStudent.Group_Number, Course = editingStudent.Course, Semester = editingStudent.Semester};
+        HttpResponseMessage response = await HttpClient.PutAsJsonAsync($"https://localhost:7046/api/Student/{stu.Id}", stu);
+        if (response.IsSuccessStatusCode)
+        {
+            isEditing = false;
+            editingStudent = default;
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error saving changes. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void ToggleCreateStudentMenu()
+    {
+        isCreatingStudent = !isCreatingStudent;
+    }
+}

@@ -1,0 +1,182 @@
+﻿@page "/disciplines"
+
+<PageTitle>Дисциплины</PageTitle>
+
+@inject HttpClient HttpClient
+
+<h1>Дисциплины</h1>
+
+<p>Здесь находится список дисциплин</p>
+
+<MudTooltip Text="Добавить дисциплину">
+    <MudFab Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="ToggleCreateDisciplineMenu" />
+</MudTooltip>
+
+@if (isCreatingDiscipline)
+{
+    <div>
+        <MudTextField @bind-Value="newDiscipline.Title" Label="Название" />
+        <MudTextField @bind-Value="newDiscipline.Hours" Label="Колличество часов" />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateDiscipline">Создать дисциплину</MudButton>
+    </div>
+}
+
+@if (disciplines == null)
+{
+    <p><em>Loading disciplines...</em></p>
+}
+else
+{
+    <MudTable Items="@disciplines" Hover="true" ReadOnly="true">
+        <HeaderContent>
+            <MudTh>Название дисциплины</MudTh>
+            <MudTh>Количество часов</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @if (isEditing && context.Id == editingDiscipline.Id)
+                {
+                    <MudTextField @bind-Value="editingDiscipline.Title" />
+                }
+                else
+                {
+                    <a href="/disciplines/@context.Id">@context.Title</a>
+                }
+            </MudTd>            
+            <MudTd>
+                @if (isEditing && context.Id == editingDiscipline.Id)
+                {
+                    <MudTextField @bind-Value="editingDiscipline.Hours" />
+                }
+                else
+                {
+                    @context.Hours
+                }
+            </MudTd>
+            <MudTd>
+                <MudMenu FullWidth="true" ActivationEvent="@MouseEvent.MouseOver" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                    <ActivatorContent>
+                        <MudChip Icon="@Icons.Material.Filled.MoreVert"></MudChip>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @if (isEditing && context.Id == editingDiscipline.Id)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="SaveChanges">
+                                <MudIcon Icon="@Icons.Material.Filled.Save" Size="Size.Small" />
+                            </MudButton>
+
+                            <MudButton Variant="Variant.Outlined" OnClick="CancelEditing">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Delete" @onclick="() => DeleteDiscipline(context.Id)">Удалить</MudMenuItem>
+                            <MudMenuItem IconSize="Size.Small" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Edit" @onclick="() => StartEditing(context)">Редактировать</MudMenuItem>
+                        }
+                    </ChildContent>
+                </MudMenu>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<(int Id, string Title, int Hours)> disciplines;
+
+    private DisciplineDto newDiscipline = new DisciplineDto();
+
+    private (int Id, string Title, int Hours) editingDiscipline;
+        
+    private bool isEditing = false;
+
+    private bool isCreatingDiscipline = false;
+    
+    private bool shouldUpdate = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpResponseMessage response = await HttpClient.GetAsync("https://localhost:7046/api/Discipline");
+        if (response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadFromJsonAsync<List<DisciplineDto>>();
+
+            disciplines = responseBody.Select(rb => (rb.Id, rb.Title, rb.Hours)).ToList();
+            
+            if (disciplines != null)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task DeleteDiscipline(int disId)
+    {
+        HttpResponseMessage response = await HttpClient.DeleteAsync($"https://localhost:7046/api/Discipline/{disId}");
+        shouldUpdate = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            return;
+        }
+
+        if (shouldUpdate)
+        {
+            shouldUpdate = false;
+            await OnInitializedAsync();
+        }
+    }
+
+    private async Task CreateDiscipline()
+    {
+        HttpResponseMessage response = await HttpClient.PostAsJsonAsync("https://localhost:7046/api/Discipline", newDiscipline);
+
+        if (response.IsSuccessStatusCode)
+        {
+            newDiscipline = new DisciplineDto();
+
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error creating discipline. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void StartEditing((int Id, string Title, int Hours) discipline)
+    {
+        isEditing = true;
+        editingDiscipline = discipline;
+    }
+
+    private void CancelEditing()
+    {
+        isEditing = false;
+        editingDiscipline = default;
+    }
+
+    private async Task SaveChanges()
+    {
+        var dis = new DisciplineDto { Id = editingDiscipline.Id, Title = editingDiscipline.Title, Hours = editingDiscipline.Hours};
+        HttpResponseMessage response = await HttpClient.PutAsJsonAsync($"https://localhost:7046/api/Discipline/{dis.Id}", dis);
+        if (response.IsSuccessStatusCode)
+        {
+            isEditing = false;
+            editingDiscipline = default;
+            shouldUpdate = true;
+        }
+        else
+        {
+            Console.WriteLine($"Error saving changes. Status code: {response.StatusCode}");
+        }
+    }
+
+    private void ToggleCreateDisciplineMenu()
+    {
+        isCreatingDiscipline = !isCreatingDiscipline;
+    }
+}

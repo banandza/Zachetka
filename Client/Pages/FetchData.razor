@@ -1,0 +1,51 @@
+﻿@page "/disciplines"
+
+<PageTitle>Дисциплины</PageTitle>
+
+@inject WeatherForecastService ForecastService
+@inject NavigationManager NavigationManager
+@inject HttpClient HttpClient
+
+<h1>Дисциплины</h1>
+
+<p>Здесь находится список дисциплин</p>
+
+@if (disciplines == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Название дисциплины</th>
+                <th>Колличество часов</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var discipline in disciplines)
+            {
+                <tr>
+                    <td>@discipline.Title</td>
+                    <td>@discipline.Hours</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<(int Id, string Title, int Hours)> disciplines;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpResponseMessage response = await HttpClient.GetAsync($"https://localhost:7046/api/Discipline/GetDisciplines");
+        if (response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadFromJsonAsync<List<DisciplineDto>>();
+
+            disciplines = responseBody.Select(rb => (rb.Id, rb.Title, rb.Hours)).ToList();
+        }
+    }
+}
